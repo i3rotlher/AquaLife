@@ -1,0 +1,11 @@
+{
+    "java.project.sourcePaths": [
+        "."
+    ],
+    "java.project.referencedLibraries": [
+        "lib/**/*.jar",
+        "messaging.jar",
+        "aqua\\blatt1\\messaging.jar",
+        "aqua-blatt1-src.jar"
+    ]
+}
