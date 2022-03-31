@@ -19,27 +19,25 @@ public class Broker {
 
     private ClientCollection<InetSocketAddress> clientList = new ClientCollection<>();
 
+    // List with fixed amount of Threads, which can take Tasks and schedules them to the threads
     private ExecutorService es = Executors.newFixedThreadPool(10);
-
+    // read write lock for reading the clientList in the threads (Problem: with register / deregister)
     ReadWriteLock lock = new ReentrantReadWriteLock( ) ;
-
+    // Flag for setting the stopRequest in the while loop (Problem: Broker can be stuck in blockingReceive)
     private static volatile boolean stopRequest = false;
 
     public void broker() {
-
-        // Stopping Thread
-        // es.execute(new stopRequest());
+        // Stopping Thread for setting the stopRequest
+        es.execute(new stopRequest());
 
         while (!stopRequest) {
             Message m = ep.blockingReceive();
 
-            //poison pill
+            //poison pill message
             if (m.getPayload() instanceof PoisonPill) {
                 System.out.println("*Urgh* ive been poisoned by " + m.getSender() + "! This little Biiitt.... *dying sound*");
                 break;
             }
-
-
             es.execute(new BrokerTask(m));
         }
         es.shutdownNow();
@@ -49,13 +47,10 @@ public class Broker {
     private int lastId = 0;
 
     public void register(Message m) {
-
         lock.writeLock().lock();
-
         String id = "tank " + lastId;
         lastId++;
         clientList.add(id, m.getSender());
-
         lock.writeLock().unlock();
 
         ep.send(m.getSender(), new RegisterResponse(id));
@@ -76,7 +71,7 @@ public class Broker {
 
         lock.readLock().lock();
 
-        if(d.equals(Direction.LEFT)) {
+        if (d.equals(Direction.LEFT)) {
             next = clientList.getLeftNeighorOf(clientList.indexOf(m.getSender()));
         } else {
             next = clientList.getRightNeighorOf(clientList.indexOf(m.getSender()));
@@ -87,12 +82,9 @@ public class Broker {
         ep.send(next, new HandoffRequest(req.getFish()));
     }
 
-    public static void main(String [] args) {
-        Broker broke = new Broker();
-        broke.broker();
-        System.exit(1);
-    }
-
+    /*
+    class for creating tasks that handle the messages received by the broker
+     */
     private class BrokerTask implements Runnable {
 
         private Message m;
@@ -107,22 +99,22 @@ public class Broker {
         }
 
         public void processMsg() {
+            Serializable payload = m.getPayload();
 
-            Serializable paylaod = m.getPayload();
-
-            if (paylaod instanceof RegisterRequest) {
+            if (payload instanceof RegisterRequest) {
                 register(m);
-            } else if (paylaod instanceof DeregisterRequest) {
+            } else if (payload instanceof DeregisterRequest) {
                 deregister(m);
-            } else if (paylaod instanceof HandoffRequest) {
+            } else if (payload instanceof HandoffRequest) {
                 handofFish(m);
             }
         }
-
-
     }
 
-    private class stopRequest implements Runnable {
+    /*
+    class for creating a task that only displays a messageDialog which sets the stopRequest flag
+     */
+    private static class stopRequest implements Runnable {
 
         @Override
         public void run() {
@@ -130,7 +122,12 @@ public class Broker {
             JOptionPane.showMessageDialog(frame,"Du wollen beenden Broker ? Du drücken \"OK\"");
             stopRequest = true;
         }
+    }
 
+    public static void main(String [] args) {
+        Broker broke = new Broker();
+        broke.broker();
+        System.exit(1);
     }
 
 }
