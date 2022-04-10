@@ -22,8 +22,11 @@ public class Broker {
     // List with fixed amount of Threads, which can take Tasks and schedules them to the threads
     private ExecutorService es = Executors.newFixedThreadPool(10);
     // read write lock for reading the clientList in the threads (Problem: with register / deregister)
-    ReadWriteLock lock = new ReentrantReadWriteLock( ) ;
+    ReadWriteLock lock = new ReentrantReadWriteLock() ;
     // Flag for setting the stopRequest in the while loop (Problem: Broker can be stuck in blockingReceive)
+    // Das Sichtbarmachen vom Anderungen mit ¨ volatile verhindert keine
+    // Inkonsistenzen durch konkurrierenden Zugriff. Es stellt nur sicher, dass
+    // schreibender Zugriff sofort in allen Threads sichtbar wird
     private static volatile boolean stopRequest = false;
 
     public void broker() {
@@ -49,9 +52,25 @@ public class Broker {
     public void register(Message m) {
         lock.writeLock().lock();
         String id = "tank " + lastId;
+        InetSocketAddress sender = m.getSender();
         lastId++;
-        clientList.add(id, m.getSender());
+        clientList.add(id, sender);
+
+        int index = clientList.indexOf(id);
+
+        // Get the left and right neighbor
+        InetSocketAddress left = clientList.getLeftNeighorOf(index);
+        InetSocketAddress right = clientList.getRightNeighorOf(index);
+
         lock.writeLock().unlock();
+
+        // Tell new client his new neighbors
+        ep.send(sender, new NeighborUpdate(left, Direction.LEFT));
+        ep.send(sender, new NeighborUpdate(right, Direction.RIGHT));
+
+        // Tell neighbors that they have a new left or right neighbor
+        ep.send(left, new NeighborUpdate(sender, Direction.RIGHT));
+        ep.send(right, new NeighborUpdate(sender, Direction.LEFT));
 
         ep.send(m.getSender(), new RegisterResponse(id));
     }
@@ -60,6 +79,16 @@ public class Broker {
         String id = ((DeregisterRequest) m.getPayload()).getId();
 
         lock.writeLock().lock();
+        int index = clientList.indexOf(id);
+
+        // Get the left and right neighbor
+        InetSocketAddress left = clientList.getLeftNeighorOf(index);
+        InetSocketAddress right = clientList.getRightNeighorOf(index);
+
+        // Tell neighbors that they are each others new neighbor now
+        ep.send(left, new NeighborUpdate(right, Direction.RIGHT));
+        ep.send(right, new NeighborUpdate(left, Direction.LEFT));
+
         this.clientList = clientList.remove(clientList.indexOf(id));
         lock.writeLock().unlock();
     }
@@ -118,9 +147,9 @@ public class Broker {
 
         @Override
         public void run() {
-            JFrame frame = new JFrame("Stop Flag");
-            JOptionPane.showMessageDialog(frame,"Du wollen beenden Broker ? Du drücken \"OK\"");
+            JOptionPane.showMessageDialog(null,"Du wollen beenden Broker ? Du drücken \"OK\"", "Set Stop Flag", JOptionPane.QUESTION_MESSAGE);
             stopRequest = true;
+            System.out.println("Flag set to quit after next message received");
         }
     }
 
