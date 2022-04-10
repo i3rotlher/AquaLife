@@ -64,6 +64,11 @@ public class Broker {
 
         lock.writeLock().unlock();
 
+        ep.send(m.getSender(), new RegisterResponse(id));
+
+        // Hand out the Token to the first client
+        if (lastId == 1) {System.out.println("Sending Token ...");ep.send(sender, new Token());};
+
         // Tell new client his new neighbors
         ep.send(sender, new NeighborUpdate(left, Direction.LEFT));
         ep.send(sender, new NeighborUpdate(right, Direction.RIGHT));
@@ -71,8 +76,6 @@ public class Broker {
         // Tell neighbors that they have a new left or right neighbor
         ep.send(left, new NeighborUpdate(sender, Direction.RIGHT));
         ep.send(right, new NeighborUpdate(sender, Direction.LEFT));
-
-        ep.send(m.getSender(), new RegisterResponse(id));
     }
 
     public void deregister (Message m) {

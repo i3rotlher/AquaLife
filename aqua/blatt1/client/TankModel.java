@@ -1,11 +1,7 @@
 package aqua.blatt1.client;
 
 import java.net.InetSocketAddress;
-import java.util.Collections;
-import java.util.Iterator;
-import java.util.Observable;
-import java.util.Random;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
@@ -14,7 +10,7 @@ import aqua.blatt1.common.FishModel;
 
 public class TankModel extends Observable implements Iterable<FishModel> {
 
-	public static final int WIDTH = 600;
+	public static final int WIDTH = 300;
 	public static final int HEIGHT = 350;
 	protected static final int MAX_FISHIES = 5;
 	protected static final Random rand = new Random();
@@ -25,6 +21,8 @@ public class TankModel extends Observable implements Iterable<FishModel> {
 	protected InetSocketAddress left;
 	protected InetSocketAddress right;
 
+	private boolean doIhaveIt = false;
+	private Timer timer = new Timer();
 
 	public TankModel(ClientCommunicator.ClientForwarder forwarder) {
 		this.fishies = Collections.newSetFromMap(new ConcurrentHashMap<FishModel, Boolean>());
@@ -72,7 +70,12 @@ public class TankModel extends Observable implements Iterable<FishModel> {
 			fish.update();
 
 			if (fish.hitsEdge())
-				forwarder.handOff(fish, this);
+				// If i dont have the token reverse the fish
+				if (!doIhaveIt) {
+					fish.reverse();
+				} else {
+					forwarder.handOff(fish, this);
+				}
 
 			if (fish.disappears())
 				it.remove();
@@ -97,6 +100,19 @@ public class TankModel extends Observable implements Iterable<FishModel> {
 			// allow method to terminate
 		}
 	}
+
+	public synchronized void receiveToken() {
+		this.doIhaveIt = true;
+		timer.schedule(new TimerTask() {
+			@Override
+			public void run() {
+				doIhaveIt = false;
+				forwarder.handOffToken(left);
+			}
+		}, 10000);
+	}
+
+	public boolean hasToken() {return doIhaveIt;}
 
 	public synchronized void finish() {
 		forwarder.deregister(id);
