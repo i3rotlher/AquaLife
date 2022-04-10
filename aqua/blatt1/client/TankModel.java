@@ -109,7 +109,7 @@ public class TankModel extends Observable implements Iterable<FishModel> {
 				doIhaveIt = false;
 				forwarder.handOffToken(left);
 			}
-		}, 10000);
+		}, 3000);
 	}
 
 	public boolean hasToken() {return doIhaveIt;}
