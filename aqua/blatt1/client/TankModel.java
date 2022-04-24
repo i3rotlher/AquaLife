@@ -66,11 +66,13 @@ public class TankModel extends Observable implements Iterable<FishModel> {
 	}
 
 	synchronized void handOffCollector() {
+		SnapshotCollector tmp = this.snapshotCollector;
+		this.snapshotCollector = null;
 		// if initiator receives the SnapshotCollector back
-		if (snapshotCollector.getInitiator().equals(id)) {globalState = snapshotCollector.getFishCount(); return;}
+		if (tmp.getInitiator().equals(id)) {globalState = tmp.getFishCount(); return;}
 		// add localeSnapshot to the SnapshotCollector and send it
-		snapshotCollector.addSnapshot(fishCounter+localState.size());
-		forwarder.sendSnapshotCollector(left, snapshotCollector);
+		tmp.addSnapshot(fishCounter+localState.size());
+		forwarder.sendSnapshotCollector(left, tmp);
 	}
 
 	synchronized void onRegistration(String id) {
