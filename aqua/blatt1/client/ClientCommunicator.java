@@ -40,7 +40,13 @@ public class ClientCommunicator {
 			}
 		}
 
+		public void sendSnapshotMarker(InetSocketAddress neighbor) {endpoint.send(neighbor, new SnapshotMarker());}
+
 		public void handOffToken(InetSocketAddress neighbor) {endpoint.send(neighbor, new Token());}
+
+		public void sendSnapshotCollector(InetSocketAddress neighbor, SnapshotCollector snapshotCollerctor) {
+			endpoint.send(neighbor, snapshotCollerctor);
+		}
 	}
 
 	public class ClientReceiver extends Thread {
@@ -73,7 +79,50 @@ public class ClientCommunicator {
 
 				if (msg.getPayload() instanceof Token) {
 					tankModel.receiveToken();
-					System.out.printf("Recieved Token! [%s]\n", tankModel.getId());
+				}
+
+				if (msg.getPayload() instanceof SnapshotMarker) {
+					// Not in recording Mode
+					if (this.tankModel.recState == TankModel.RecordingState.IDLE) {
+						if (msg.getSender() == tankModel.right) {
+							this.tankModel.initiateSnapshot(TankModel.RecordingState.LEFT);
+						} else {
+							this.tankModel.initiateSnapshot(TankModel.RecordingState.RIGHT);
+						}
+					}
+					// In recording Mode
+					else {
+						if (msg.getSender() == tankModel.right) {
+							if (this.tankModel.recState == TankModel.RecordingState.BOTH) {
+								this.tankModel.recState = TankModel.RecordingState.LEFT;
+							} else {
+								this.tankModel.recState = TankModel.RecordingState.IDLE;
+							}
+						} else {
+							if (this.tankModel.recState == TankModel.RecordingState.BOTH) {
+								this.tankModel.recState = TankModel.RecordingState.RIGHT;
+							} else {
+								this.tankModel.recState = TankModel.RecordingState.IDLE;
+							}
+						}
+					}
+
+					if (this.tankModel.recState == TankModel.RecordingState.IDLE) {
+						System.out.println("LocaleSnapshot finished!");
+						if(this.tankModel.snapshotCollector != null) {
+							System.out.println("Sending Snapshot now!");
+							this.tankModel.handOffCollector();
+						}
+					}
+				}
+
+				if (msg.getPayload() instanceof SnapshotCollector) {
+					System.out.println("Received Collector, saving it for later!");
+					this.tankModel.snapshotCollector = (SnapshotCollector) msg.getPayload();
+					if(this.tankModel.recState == TankModel.RecordingState.IDLE) {
+						System.out.println("Sending Snapshot now!");
+						this.tankModel.handOffCollector();
+					}
 				}
 
 			}

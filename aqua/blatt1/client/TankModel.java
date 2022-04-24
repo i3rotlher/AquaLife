@@ -1,5 +1,6 @@
 package aqua.blatt1.client;
 
+import java.io.Serializable;
 import java.net.InetSocketAddress;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -7,6 +8,7 @@ import java.util.concurrent.TimeUnit;
 
 import aqua.blatt1.common.Direction;
 import aqua.blatt1.common.FishModel;
+import aqua.blatt1.common.msgtypes.SnapshotCollector;
 
 public class TankModel extends Observable implements Iterable<FishModel> {
 
@@ -21,6 +23,18 @@ public class TankModel extends Observable implements Iterable<FishModel> {
 	protected InetSocketAddress left;
 	protected InetSocketAddress right;
 
+	protected ArrayList<Serializable> localState;
+	protected RecordingState recState = RecordingState.IDLE;
+
+	protected enum RecordingState {
+		IDLE,
+		LEFT,
+		RIGHT,
+		BOTH
+	}
+	protected SnapshotCollector snapshotCollector = null;
+	protected int globalState = -1;
+
 	private boolean doIhaveIt = false;
 	private Timer timer = new Timer();
 
@@ -29,10 +43,41 @@ public class TankModel extends Observable implements Iterable<FishModel> {
 		this.forwarder = forwarder;
 	}
 
+	synchronized void initiateSnapshot(RecordingState channels) {
+		System.out.println("Initiating Snapshot!");
+		// List for saving incoming changes
+		this.localState = new ArrayList<Serializable>();
+		// start recording all incoming channels
+		this.recState = channels;
+		// send markers to all outgoing channels
+		forwarder.sendSnapshotMarker(left);
+		forwarder.sendSnapshotMarker(right);
+	}
+
+	synchronized void initCollector() {
+		// wait till recording is done
+		while (recState != RecordingState.IDLE);
+		// create SnapshotCollector with own id as initiator and add localState to it
+		SnapshotCollector collectToken = new SnapshotCollector(id);
+		collectToken.addSnapshot(fishCounter+localState.size());
+		// send to the left neighbor
+		forwarder.sendSnapshotCollector(left, collectToken);
+		System.out.println("Sending Collector!");
+	}
+
+	synchronized void handOffCollector() {
+		// if initiator receives the SnapshotCollector back
+		if (snapshotCollector.getInitiator().equals(id)) {globalState = snapshotCollector.getFishCount(); return;}
+		// add localeSnapshot to the SnapshotCollector and send it
+		snapshotCollector.addSnapshot(fishCounter+localState.size());
+		forwarder.sendSnapshotCollector(left, snapshotCollector);
+	}
+
 	synchronized void onRegistration(String id) {
 		this.id = id;
 		newFish(WIDTH - FishModel.getXSize(), rand.nextInt(HEIGHT - FishModel.getYSize()));
 	}
+
 
 	public synchronized void newFish(int x, int y) {
 		if (fishies.size() < MAX_FISHIES) {
@@ -47,6 +92,16 @@ public class TankModel extends Observable implements Iterable<FishModel> {
 	}
 
 	synchronized void receiveFish(FishModel fish) {
+
+		// Record Channel if recState says so
+		Direction direction = fish.getDirection();
+		if(direction == Direction.LEFT && this.recState == RecordingState.LEFT|| this.recState == RecordingState.BOTH) {
+			this.localState.add(fish);
+		}
+		else if(direction == Direction.RIGHT && this.recState == RecordingState.RIGHT|| this.recState == RecordingState.BOTH) {
+			this.localState.add(fish);
+		}
+
 		fish.setToStart();
 		fishies.add(fish);
 	}

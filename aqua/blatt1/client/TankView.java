@@ -6,8 +6,7 @@ import java.awt.event.MouseEvent;
 import java.util.Observable;
 import java.util.Observer;
 
-import javax.swing.JPanel;
-import javax.swing.SwingUtilities;
+import javax.swing.*;
 
 import aqua.blatt1.common.FishModel;
 
@@ -16,6 +15,7 @@ public class TankView extends JPanel implements Observer {
 	private final TankModel tankModel;
 	private final FishView fishView;
 	private final Runnable repaintRunnable;
+	private boolean showingCount = false;
 
 	public TankView(final TankModel tankModel) {
 		this.tankModel = tankModel;
@@ -52,6 +52,13 @@ public class TankView extends JPanel implements Observer {
 			g2d.setStroke(new BasicStroke(10));
 			g2d.setColor(Color.GRAY);
 			drawBorders(g2d);
+		}
+
+		if (tankModel.globalState != -1) {
+			int tmp = tankModel.globalState;
+			tankModel.globalState = -1;
+			JOptionPane.showMessageDialog(this, "Total amount of fishs in the tanks: " + tmp);
+
 		}
 
 		for (FishModel fishModel : tankModel) {

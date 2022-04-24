@@ -10,7 +10,6 @@ import aqua.blatt1.common.Properties;
 import aqua.blatt1.common.msgtypes.*;
 import aqua.blatt2.broker.PoisonPill;
 import messaging.*;
-
 import javax.swing.*;
 
 
