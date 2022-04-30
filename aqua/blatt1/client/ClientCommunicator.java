@@ -10,141 +10,173 @@ import aqua.blatt1.common.FishModel;
 import aqua.blatt1.common.Properties;
 
 public class ClientCommunicator {
-	private final Endpoint endpoint;
+    private final Endpoint endpoint;
 
-	public ClientCommunicator() {
-		endpoint = new Endpoint();
-	}
+    public ClientCommunicator() {
+        endpoint = new Endpoint();
+    }
 
-	public class ClientForwarder {
-		private final InetSocketAddress broker;
+    public class ClientForwarder {
+        private final InetSocketAddress broker;
 
-		private ClientForwarder() {
-			this.broker = new InetSocketAddress(Properties.HOST, Properties.PORT);
-		}
+        private ClientForwarder() {
+            this.broker = new InetSocketAddress(Properties.HOST, Properties.PORT);
+        }
 
-		public void register() {
-			endpoint.send(broker, new RegisterRequest());
-		}
+        public void register() {
+            endpoint.send(broker, new RegisterRequest());
+        }
 
-		public void deregister(String id) {
-			endpoint.send(broker, new DeregisterRequest(id));
-		}
+        public void deregister(String id) {
+            endpoint.send(broker, new DeregisterRequest(id));
+        }
 
-		public void handOff(FishModel fish, TankModel tankModel) {
-			// If the fish is swimming to the left: HandoffRequest to the left neighbor
-			if (fish.getDirection().equals(Direction.LEFT)) {
-				endpoint.send(tankModel.left, new HandoffRequest(fish));
-			} else {
-				endpoint.send(tankModel.right, new HandoffRequest(fish));
-			}
-		}
+        public void handOff(FishModel fish, TankModel tankModel) {
+            // If the fish is swimming to the left: HandoffRequest to the left neighbor
+            if (fish.getDirection().equals(Direction.LEFT)) {
+                endpoint.send(tankModel.left, new HandoffRequest(fish));
+            } else {
+                endpoint.send(tankModel.right, new HandoffRequest(fish));
+            }
+        }
 
-		public void sendSnapshotMarker(InetSocketAddress neighbor) {endpoint.send(neighbor, new SnapshotMarker());}
+        public void sendSnapshotMarker(InetSocketAddress neighbor) {
+            endpoint.send(neighbor, new SnapshotMarker());
+        }
 
-		public void handOffToken(InetSocketAddress neighbor) {endpoint.send(neighbor, new Token());}
+        public void handOffToken(InetSocketAddress neighbor) {
+            endpoint.send(neighbor, new Token());
+        }
 
-		public void sendSnapshotCollector(InetSocketAddress neighbor, SnapshotCollector snapshotCollerctor) {
-			endpoint.send(neighbor, snapshotCollerctor);
-		}
+        public void sendSnapshotCollector(InetSocketAddress neighbor, SnapshotCollector snapshotCollerctor) {
+            endpoint.send(neighbor, snapshotCollerctor);
+        }
 
-		public void sendLocationRequest(InetSocketAddress neighbor, String fishID) {
-			endpoint.send(neighbor, new LocationRequest(fishID));
-		}
-	}
+        public void sendLocationRequest(InetSocketAddress location, String fishID) {
+            endpoint.send(location, new LocationRequest(fishID));
+        }
 
-	public class ClientReceiver extends Thread {
-		private final TankModel tankModel;
+        public void sendLocationUpdate(InetSocketAddress homeTankAdress, String fishID) {
 
-		private ClientReceiver(TankModel tankModel) {
-			this.tankModel = tankModel;
-		}
+            endpoint.send(homeTankAdress, new LocationUpdate(fishID));
+        }
 
-		@Override
-		public void run() {
-			while (!isInterrupted()) {
-				Message msg = endpoint.blockingReceive();
+        public void sendNameResolveRequest(String tankID, String requestID) {
+            endpoint.send(broker, new NameResolutionRequest(tankID, requestID));
+        }
+    }
 
-				if (msg.getPayload() instanceof RegisterResponse)
-					tankModel.onRegistration(((RegisterResponse) msg.getPayload()).getId());
+    public class ClientReceiver extends Thread {
+        private final TankModel tankModel;
 
-				if (msg.getPayload() instanceof HandoffRequest)
-					tankModel.receiveFish(((HandoffRequest) msg.getPayload()).getFish());
+        private ClientReceiver(TankModel tankModel) {
+            this.tankModel = tankModel;
+        }
 
-				if (msg.getPayload() instanceof NeighborUpdate) {
-					// If left neighbor gets updated
-					if (((NeighborUpdate) msg.getPayload()).getDirection().equals(Direction.LEFT)) {
-						tankModel.left = ((NeighborUpdate) msg.getPayload()).getNeighbor();
-					// Else right neighbor gets updated
-					} else {
-						tankModel.right = ((NeighborUpdate) msg.getPayload()).getNeighbor();
-					}
-				}
+        @Override
+        public void run() {
+            while (!isInterrupted()) {
+                Message msg = endpoint.blockingReceive();
 
-				if (msg.getPayload() instanceof Token) {
-					tankModel.receiveToken();
-				}
+                if (msg.getPayload() instanceof RegisterResponse)
+                    tankModel.onRegistration(((RegisterResponse) msg.getPayload()).getId());
 
-				if (msg.getPayload() instanceof SnapshotMarker) {
-					// Not in recording Mode
-					if (this.tankModel.recState == TankModel.RecordingState.IDLE) {
-						if (msg.getSender() == tankModel.right) {
-							this.tankModel.initiateSnapshot(TankModel.RecordingState.LEFT);
-						} else {
-							this.tankModel.initiateSnapshot(TankModel.RecordingState.RIGHT);
-						}
-					}
-					// In recording Mode
-					else {
-						if (msg.getSender() == tankModel.right) {
-							if (this.tankModel.recState == TankModel.RecordingState.BOTH) {
-								this.tankModel.recState = TankModel.RecordingState.LEFT;
-							} else {
-								this.tankModel.recState = TankModel.RecordingState.IDLE;
-							}
-						} else {
-							if (this.tankModel.recState == TankModel.RecordingState.BOTH) {
-								this.tankModel.recState = TankModel.RecordingState.RIGHT;
-							} else {
-								this.tankModel.recState = TankModel.RecordingState.IDLE;
-							}
-						}
-					}
+                if (msg.getPayload() instanceof HandoffRequest)
+                    tankModel.receiveFish(((HandoffRequest) msg.getPayload()).getFish());
 
-					if (this.tankModel.recState == TankModel.RecordingState.IDLE) {
-						System.out.println("LocaleSnapshot finished!");
-						if(this.tankModel.snapshotCollector != null) {
-							System.out.println("Sending Snapshot now!");
-							this.tankModel.handOffCollector();
-						}
-					}
-				}
+                if (msg.getPayload() instanceof NeighborUpdate) {
+                    // If left neighbor gets updated
+                    if (((NeighborUpdate) msg.getPayload()).getDirection().equals(Direction.LEFT)) {
+                        tankModel.left = ((NeighborUpdate) msg.getPayload()).getNeighbor();
+                        // Else right neighbor gets updated
+                    } else {
+                        tankModel.right = ((NeighborUpdate) msg.getPayload()).getNeighbor();
+                    }
+                }
 
-				if (msg.getPayload() instanceof SnapshotCollector) {
-					System.out.println("Received Collector, saving it for later!");
-					this.tankModel.snapshotCollector = (SnapshotCollector) msg.getPayload();
-					if(this.tankModel.recState == TankModel.RecordingState.IDLE) {
-						System.out.println("Sending Snapshot now!");
-						this.tankModel.handOffCollector();
-					}
-				}
+                if (msg.getPayload() instanceof Token) {
+                    tankModel.receiveToken();
+                }
 
-				if (msg.getPayload() instanceof LocationRequest) {
-					System.out.println("Received LocationRequest for: " + ((LocationRequest) msg.getPayload()).getRequestedFishID());
-					tankModel.locateFishGlobally(((LocationRequest) msg.getPayload()).getRequestedFishID());
-				}
+                if (msg.getPayload() instanceof SnapshotMarker) {
+                    // Not in recording Mode
+                    if (this.tankModel.recState == TankModel.RecordingState.IDLE) {
+                        if (msg.getSender() == tankModel.right) {
+                            this.tankModel.initiateSnapshot(TankModel.RecordingState.LEFT);
+                        } else {
+                            this.tankModel.initiateSnapshot(TankModel.RecordingState.RIGHT);
+                        }
+                    }
+                    // In recording Mode
+                    else {
+                        if (msg.getSender() == tankModel.right) {
+                            if (this.tankModel.recState == TankModel.RecordingState.BOTH) {
+                                this.tankModel.recState = TankModel.RecordingState.LEFT;
+                            } else {
+                                this.tankModel.recState = TankModel.RecordingState.IDLE;
+                            }
+                        } else {
+                            if (this.tankModel.recState == TankModel.RecordingState.BOTH) {
+                                this.tankModel.recState = TankModel.RecordingState.RIGHT;
+                            } else {
+                                this.tankModel.recState = TankModel.RecordingState.IDLE;
+                            }
+                        }
+                    }
 
-			}
-			System.out.println("Receiver stopped.");
-		}
-	}
+                    if (this.tankModel.recState == TankModel.RecordingState.IDLE) {
+                        System.out.println("LocaleSnapshot finished!");
+                        if (this.tankModel.snapshotCollector != null) {
+                            System.out.println("Sending Snapshot now!");
+                            this.tankModel.handOffCollector();
+                        }
+                    }
+                }
 
-	public ClientForwarder newClientForwarder() {
-		return new ClientForwarder();
-	}
+                if (msg.getPayload() instanceof SnapshotCollector) {
+                    System.out.println("Received Collector, saving it for later!");
+                    this.tankModel.snapshotCollector = (SnapshotCollector) msg.getPayload();
+                    if (this.tankModel.recState == TankModel.RecordingState.IDLE) {
+                        System.out.println("Sending Snapshot now!");
+                        this.tankModel.handOffCollector();
+                    }
+                }
 
-	public ClientReceiver newClientReceiver(TankModel tankModel) {
-		return new ClientReceiver(tankModel);
-	}
+                if (msg.getPayload() instanceof LocationRequest) {
+                    System.out.println("Received LocationRequest for: " + ((LocationRequest) msg.getPayload()).getRequestedFishID());
+                    if (tankModel.useForwardingRefrence) {
+                        tankModel.locateFishGlobally(((LocationRequest) msg.getPayload()).getRequestedFishID());
+                    } else {
+                        // when using homeAgent no need to check if fish is here (must be here)
+                        tankModel.locateFishLocally(((LocationRequest) msg.getPayload()).getRequestedFishID());
+                    }
+                }
+
+                if (msg.getPayload() instanceof LocationUpdate) {
+                    System.out.println("Received LocationUpdate for: " + (((LocationUpdate) msg.getPayload()).getFishID()));
+                    String fishID = ((LocationUpdate) msg.getPayload()).getFishID();
+                    InetSocketAddress location = msg.getSender();
+                    tankModel.updateFishLocation(fishID, location);
+                }
+
+                if (msg.getPayload() instanceof NameResolutionResponse) {
+                    System.out.println("Received NameResolutionRequest for: " + ((NameResolutionResponse) msg.getPayload()).getResponseID());
+                    String fishID = (((NameResolutionResponse) msg.getPayload()).getResponseID());
+                    InetSocketAddress tankAdress = ((NameResolutionResponse) msg.getPayload()).getTankAdress();
+                    tankModel.sendFishUpdate(tankAdress, fishID);
+                }
+
+            }
+            System.out.println("Receiver stopped.");
+        }
+    }
+
+    public ClientForwarder newClientForwarder() {
+        return new ClientForwarder();
+    }
+
+    public ClientReceiver newClientReceiver(TankModel tankModel) {
+        return new ClientReceiver(tankModel);
+    }
 
 }

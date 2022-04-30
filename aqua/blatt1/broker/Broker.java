@@ -113,6 +113,13 @@ public class Broker {
         ep.send(next, new HandoffRequest(req.getFish()));
     }
 
+    public void resolveName(Message m) {
+        InetSocketAddress sender = m.getSender();
+        NameResolutionRequest req = (NameResolutionRequest) m.getPayload();
+        InetSocketAddress tankAdress = clientList.getClient(clientList.indexOf(req.getTankID()));
+        ep.send(sender, new NameResolutionResponse(req.getRequestID(), tankAdress));
+    }
+
     /*
     class for creating tasks that handle the messages received by the broker
      */
@@ -138,6 +145,8 @@ public class Broker {
                 deregister(m);
             } else if (payload instanceof HandoffRequest) {
                 handofFish(m);
+            } else if (payload instanceof NameResolutionRequest) {
+                resolveName(m);
             }
         }
     }

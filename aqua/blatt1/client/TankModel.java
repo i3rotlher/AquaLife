@@ -12,212 +12,248 @@ import aqua.blatt1.common.msgtypes.SnapshotCollector;
 
 public class TankModel extends Observable implements Iterable<FishModel> {
 
-	public static final int WIDTH = 300;
-	public static final int HEIGHT = 350;
-	protected static final int MAX_FISHIES = 5;
-	protected static final Random rand = new Random();
-	protected volatile String id;
-	protected final Set<FishModel> fishies;
-	protected int fishCounter = 0;
-	protected final ClientCommunicator.ClientForwarder forwarder;
-	protected InetSocketAddress left;
-	protected InetSocketAddress right;
+    public static final int WIDTH = 300;
+    public static final int HEIGHT = 350;
+    protected static final int MAX_FISHIES = 5;
+    protected static final Random rand = new Random();
+    protected volatile String id;
+    protected final Set<FishModel> fishies;
+    protected int fishCounter = 0;
+    protected final ClientCommunicator.ClientForwarder forwarder;
+    protected InetSocketAddress left;
+    protected InetSocketAddress right;
 
-	protected ArrayList<Serializable> localState;
-	protected RecordingState recState = RecordingState.IDLE;
+    protected ArrayList<Serializable> localState;
+    protected RecordingState recState = RecordingState.IDLE;
 
-	protected Map<String, FishState> fishTraces = new HashMap<>();
+    protected Map<String, FishState> fishTraces = new HashMap<>();
+    protected Map<String, InetSocketAddress> homeAgent = new HashMap<>();
 
-	protected enum FishState {
-		HERE,
-		LEFT,
-		RIGHT
-	}
+    // true = forwardingRefrende, false=Heimatgestuetzter Ansatz
+    protected boolean useForwardingRefrence = false;
 
-	/**
-	 * locate the fish with the given ID
-	 * @param fishID the ID of the Fish
-	 */
-    public void locateFishGlobally(String fishID) {
-
-    	// Fish Here
-    	if (locateFishLocally(fishID)) {
-    		return;
-		} else {
-    		InetSocketAddress neighbor = fishTraces.get(fishID) == FishState.LEFT ? left : right;
-    		forwarder.sendLocationRequest(neighbor, fishID);
-    	}
+    public void updateFishLocation(String fishID, InetSocketAddress location) {
+        homeAgent.put(fishID, location);
     }
 
-	/**
-	 * try to locate the fish locally and tag him if present
-	 * @param fishID the fish to search for
-	 * @return true if the fish was found, false if the fish is not present
-	 */
-	private boolean locateFishLocally(String fishID) {
+    protected enum FishState {
+        HERE,
+        LEFT,
+        RIGHT
+    }
 
-		for (FishModel f : fishies) {
-			if (f.getId().equals(fishID)) {
-				f.toggle();
-				return true;
-			}
-		}
-		return false;
-	}
+    /**
+     * locate the fish with the given ID
+     *
+     * @param fishID the ID of the Fish
+     */
+    public void locateFishGlobally(String fishID) {
+
+        if (useForwardingRefrence) {
+            // fish Here
+            if (locateFishLocally(fishID)) {
+                return;
+            } else {
+                InetSocketAddress neighbor = fishTraces.get(fishID) == FishState.LEFT ? left : right;
+                forwarder.sendLocationRequest(neighbor, fishID);
+            }
+        } else {
+            InetSocketAddress location = homeAgent.get(fishID);
+            // fish here
+            if (location == null) {
+                locateFishLocally(fishID);
+            } else {
+                forwarder.sendLocationRequest(location, fishID);
+            }
+        }
+    }
+
+    /**
+     * try to locate the fish locally and tag him if present
+     *
+     * @param fishID the fish to search for
+     * @return true if the fish was found, false if the fish is not present
+     */
+    public boolean locateFishLocally(String fishID) {
+        for (FishModel f : fishies) {
+            if (f.getId().equals(fishID)) {
+                f.toggle();
+                return true;
+            }
+        }
+        return false;
+    }
 
     protected enum RecordingState {
-		IDLE,
-		LEFT,
-		RIGHT,
-		BOTH
-	}
-	protected SnapshotCollector snapshotCollector = null;
-	protected int globalState = -1;
+        IDLE,
+        LEFT,
+        RIGHT,
+        BOTH
+    }
 
-	private boolean doIhaveIt = false;
-	private Timer timer = new Timer();
+    protected SnapshotCollector snapshotCollector = null;
+    protected int globalState = -1;
 
-	public TankModel(ClientCommunicator.ClientForwarder forwarder) {
-		this.fishies = Collections.newSetFromMap(new ConcurrentHashMap<FishModel, Boolean>());
-		this.forwarder = forwarder;
-	}
+    private boolean doIhaveIt = false;
+    private Timer timer = new Timer();
 
-	synchronized void initiateSnapshot(RecordingState channels) {
-		System.out.println("Initiating Snapshot!");
-		// List for saving incoming changes
-		this.localState = new ArrayList<Serializable>();
-		// start recording all incoming channels
-		this.recState = channels;
-		// send markers to all outgoing channels
-		forwarder.sendSnapshotMarker(left);
-		forwarder.sendSnapshotMarker(right);
-	}
+    public TankModel(ClientCommunicator.ClientForwarder forwarder) {
+        this.fishies = Collections.newSetFromMap(new ConcurrentHashMap<FishModel, Boolean>());
+        this.forwarder = forwarder;
+    }
 
-	synchronized void initCollector() {
-		// create SnapshotCollector with own id as initiator and add localState to it
-		SnapshotCollector collectToken = new SnapshotCollector(id);
-		collectToken.addSnapshot(fishCounter+localState.size());
-		// send to the left neighbor
-		forwarder.sendSnapshotCollector(left, collectToken);
-		System.out.println("Sending Collector!");
-	}
+    synchronized void initiateSnapshot(RecordingState channels) {
+        System.out.println("Initiating Snapshot!");
+        // List for saving incoming changes
+        this.localState = new ArrayList<Serializable>();
+        // start recording all incoming channels
+        this.recState = channels;
+        // send markers to all outgoing channels
+        forwarder.sendSnapshotMarker(left);
+        forwarder.sendSnapshotMarker(right);
+    }
 
-	synchronized void handOffCollector() {
-		SnapshotCollector tmp = this.snapshotCollector;
-		this.snapshotCollector = null;
-		// if initiator receives the SnapshotCollector back
-		if (tmp.getInitiator().equals(id)) {globalState = tmp.getFishCount(); return;}
-		// add localeSnapshot to the SnapshotCollector and send it
-		tmp.addSnapshot(fishCounter+localState.size());
-		forwarder.sendSnapshotCollector(left, tmp);
-	}
+    synchronized void initCollector() {
+        // create SnapshotCollector with own id as initiator and add localState to it
+        SnapshotCollector collectToken = new SnapshotCollector(id);
+        collectToken.addSnapshot(fishCounter + localState.size());
+        // send to the left neighbor
+        forwarder.sendSnapshotCollector(left, collectToken);
+        System.out.println("Sending Collector!");
+    }
 
-	synchronized void onRegistration(String id) {
-		this.id = id;
-		newFish(WIDTH - FishModel.getXSize(), rand.nextInt(HEIGHT - FishModel.getYSize()));
-	}
+    synchronized void handOffCollector() {
+        SnapshotCollector tmp = this.snapshotCollector;
+        this.snapshotCollector = null;
+        // if initiator receives the SnapshotCollector back
+        if (tmp.getInitiator().equals(id)) {
+            globalState = tmp.getFishCount();
+            return;
+        }
+        // add localeSnapshot to the SnapshotCollector and send it
+        tmp.addSnapshot(fishCounter + localState.size());
+        forwarder.sendSnapshotCollector(left, tmp);
+    }
 
+    synchronized void onRegistration(String id) {
+        this.id = id;
+        newFish(WIDTH - FishModel.getXSize(), rand.nextInt(HEIGHT - FishModel.getYSize()));
+    }
 
-	public synchronized void newFish(int x, int y) {
-		if (fishies.size() < MAX_FISHIES) {
-			x = x > WIDTH - FishModel.getXSize() - 1 ? WIDTH - FishModel.getXSize() - 1 : x;
-			y = y > HEIGHT - FishModel.getYSize() ? HEIGHT - FishModel.getYSize() : y;
+    public synchronized void sendFishUpdate(InetSocketAddress homeTank, String fishID) {
+        forwarder.sendLocationUpdate(homeTank, fishID);
+    }
 
-			FishModel fish = new FishModel("fish" + (++fishCounter) + "@" + getId(), x, y,
-					rand.nextBoolean() ? Direction.LEFT : Direction.RIGHT);
+    public synchronized void newFish(int x, int y) {
+        if (fishies.size() < MAX_FISHIES) {
+            x = x > WIDTH - FishModel.getXSize() - 1 ? WIDTH - FishModel.getXSize() - 1 : x;
+            y = y > HEIGHT - FishModel.getYSize() ? HEIGHT - FishModel.getYSize() : y;
 
-			fishies.add(fish);
-			fishTraces.put(fish.getId(), FishState.HERE);
-		}
-	}
+            FishModel fish = new FishModel("fish" + (++fishCounter) + "@" + getId(), x, y,
+                    rand.nextBoolean() ? Direction.LEFT : Direction.RIGHT);
 
-	synchronized void receiveFish(FishModel fish) {
+            fishies.add(fish);
+            fishTraces.put(fish.getId(), FishState.HERE);
+            homeAgent.put(fish.getId(), null);
+        }
+    }
 
-		// add Trace
-		fishTraces.put(fish.getId(), FishState.HERE);
+    synchronized void receiveFish(FishModel fish) {
 
-		// Record Channel if recState says so
-		Direction direction = fish.getDirection();
-		if(direction == Direction.LEFT && this.recState == RecordingState.LEFT || this.recState == RecordingState.BOTH) {
-			this.localState.add(fish);
-		}
-		else if(direction == Direction.RIGHT && this.recState == RecordingState.RIGHT) {
-			this.localState.add(fish);
-		}
+        // add Trace
+        fishTraces.put(fish.getId(), FishState.HERE);
 
-		fish.setToStart();
-		fishies.add(fish);
-	}
+        // update homeAgent
+        // fish is from this tank
+        if (fish.getTankId().equals(id)) {
+            homeAgent.put(fish.getId(), null);
+        } else {
+            forwarder.sendNameResolveRequest(fish.getTankId(), fish.getId());
+        }
 
-	public String getId() {
-		return id;
-	}
+        // Record Channel if recState says so
+        Direction direction = fish.getDirection();
+        if (direction == Direction.LEFT && this.recState == RecordingState.LEFT || this.recState == RecordingState.BOTH) {
+            this.localState.add(fish);
+        } else if (direction == Direction.RIGHT && this.recState == RecordingState.RIGHT) {
+            this.localState.add(fish);
+        }
 
-	public synchronized int getFishCounter() {
-		return fishCounter;
-	}
+        fish.setToStart();
+        fishies.add(fish);
+    }
 
-	public synchronized Iterator<FishModel> iterator() {
-		return fishies.iterator();
-	}
+    public String getId() {
+        return id;
+    }
 
-	private synchronized void updateFishies() {
-		for (Iterator<FishModel> it = iterator(); it.hasNext();) {
-			FishModel fish = it.next();
+    public synchronized int getFishCounter() {
+        return fishCounter;
+    }
 
-			fish.update();
+    public synchronized Iterator<FishModel> iterator() {
+        return fishies.iterator();
+    }
 
-			if (fish.hitsEdge())
-				// If i dont have the token reverse the fish
-				if (!doIhaveIt) {
-					fish.reverse();
-				} else {
-					forwarder.handOff(fish, this);
+    private synchronized void updateFishies() {
+        for (Iterator<FishModel> it = iterator(); it.hasNext(); ) {
+            FishModel fish = it.next();
 
-					// update Trace
-					FishState state = fish.getDirection() == Direction.LEFT ? FishState.LEFT : FishState.RIGHT;
-					fishTraces.put(fish.getId(), state);
-				}
+            fish.update();
 
-			if (fish.disappears())
-				it.remove();
-		}
-	}
+            if (fish.hitsEdge())
+                // If i dont have the token reverse the fish
+                if (!doIhaveIt) {
+                    fish.reverse();
+                } else {
+                    forwarder.handOff(fish, this);
 
-	private synchronized void update() {
-		updateFishies();
-		setChanged();
-		notifyObservers();
-	}
+                    // update Trace
+                    FishState state = fish.getDirection() == Direction.LEFT ? FishState.LEFT : FishState.RIGHT;
+                    fishTraces.put(fish.getId(), state);
+                }
 
-	protected void run() {
-		forwarder.register();
+            if (fish.disappears())
+                it.remove();
+        }
+    }
 
-		try {
-			while (!Thread.currentThread().isInterrupted()) {
-				update();
-				TimeUnit.MILLISECONDS.sleep(10);
-			}
-		} catch (InterruptedException consumed) {
-			// allow method to terminate
-		}
-	}
+    private synchronized void update() {
+        updateFishies();
+        setChanged();
+        notifyObservers();
+    }
 
-	public synchronized void receiveToken() {
-		this.doIhaveIt = true;
-		timer.schedule(new TimerTask() {
-			@Override
-			public void run() {
-				doIhaveIt = false;
-				forwarder.handOffToken(left);
-			}
-		}, 3000);
-	}
+    protected void run() {
+        forwarder.register();
 
-	public boolean hasToken() {return doIhaveIt;}
+        try {
+            while (!Thread.currentThread().isInterrupted()) {
+                update();
+                TimeUnit.MILLISECONDS.sleep(10);
+            }
+        } catch (InterruptedException consumed) {
+            // allow method to terminate
+        }
+    }
 
-	public synchronized void finish() {
-		forwarder.deregister(id);
-	}
+    public synchronized void receiveToken() {
+        this.doIhaveIt = true;
+        timer.schedule(new TimerTask() {
+            @Override
+            public void run() {
+                doIhaveIt = false;
+                forwarder.handOffToken(left);
+            }
+        }, 3000);
+    }
+
+    public boolean hasToken() {
+        return doIhaveIt;
+    }
+
+    public synchronized void finish() {
+        forwarder.deregister(id);
+    }
 
 }
