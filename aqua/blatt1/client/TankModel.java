@@ -55,8 +55,6 @@ public class TankModel extends Observable implements Iterable<FishModel> {
 	}
 
 	synchronized void initCollector() {
-		// wait till recording is done
-		while (recState != RecordingState.IDLE);
 		// create SnapshotCollector with own id as initiator and add localState to it
 		SnapshotCollector collectToken = new SnapshotCollector(id);
 		collectToken.addSnapshot(fishCounter+localState.size());
@@ -97,10 +95,10 @@ public class TankModel extends Observable implements Iterable<FishModel> {
 
 		// Record Channel if recState says so
 		Direction direction = fish.getDirection();
-		if(direction == Direction.LEFT && this.recState == RecordingState.LEFT|| this.recState == RecordingState.BOTH) {
+		if(direction == Direction.LEFT && this.recState == RecordingState.LEFT || this.recState == RecordingState.BOTH) {
 			this.localState.add(fish);
 		}
-		else if(direction == Direction.RIGHT && this.recState == RecordingState.RIGHT|| this.recState == RecordingState.BOTH) {
+		else if(direction == Direction.RIGHT && this.recState == RecordingState.RIGHT) {
 			this.localState.add(fish);
 		}
 
