@@ -26,7 +26,46 @@ public class TankModel extends Observable implements Iterable<FishModel> {
 	protected ArrayList<Serializable> localState;
 	protected RecordingState recState = RecordingState.IDLE;
 
-	protected enum RecordingState {
+	protected Map<String, FishState> fishTraces = new HashMap<>();
+
+	protected enum FishState {
+		HERE,
+		LEFT,
+		RIGHT
+	}
+
+	/**
+	 * locate the fish with the given ID
+	 * @param fishID the ID of the Fish
+	 */
+    public void locateFishGlobally(String fishID) {
+
+    	// Fish Here
+    	if (locateFishLocally(fishID)) {
+    		return;
+		} else {
+    		InetSocketAddress neighbor = fishTraces.get(fishID) == FishState.LEFT ? left : right;
+    		forwarder.sendLocationRequest(neighbor, fishID);
+    	}
+    }
+
+	/**
+	 * try to locate the fish locally and tag him if present
+	 * @param fishID the fish to search for
+	 * @return true if the fish was found, false if the fish is not present
+	 */
+	private boolean locateFishLocally(String fishID) {
+
+		for (FishModel f : fishies) {
+			if (f.getId().equals(fishID)) {
+				f.toggle();
+				return true;
+			}
+		}
+		return false;
+	}
+
+    protected enum RecordingState {
 		IDLE,
 		LEFT,
 		RIGHT,
@@ -88,10 +127,14 @@ public class TankModel extends Observable implements Iterable<FishModel> {
 					rand.nextBoolean() ? Direction.LEFT : Direction.RIGHT);
 
 			fishies.add(fish);
+			fishTraces.put(fish.getId(), FishState.HERE);
 		}
 	}
 
 	synchronized void receiveFish(FishModel fish) {
+
+		// add Trace
+		fishTraces.put(fish.getId(), FishState.HERE);
 
 		// Record Channel if recState says so
 		Direction direction = fish.getDirection();
@@ -130,6 +173,10 @@ public class TankModel extends Observable implements Iterable<FishModel> {
 					fish.reverse();
 				} else {
 					forwarder.handOff(fish, this);
+
+					// update Trace
+					FishState state = fish.getDirection() == Direction.LEFT ? FishState.LEFT : FishState.RIGHT;
+					fishTraces.put(fish.getId(), state);
 				}
 
 			if (fish.disappears())
