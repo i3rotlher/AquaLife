@@ -162,8 +162,8 @@ public class ClientCommunicator {
                 if (msg.getPayload() instanceof NameResolutionResponse) {
                     System.out.println("Received NameResolutionRequest for: " + ((NameResolutionResponse) msg.getPayload()).getResponseID());
                     String fishID = (((NameResolutionResponse) msg.getPayload()).getResponseID());
-                    InetSocketAddress tankAdress = ((NameResolutionResponse) msg.getPayload()).getTankAdress();
-                    tankModel.sendFishUpdate(tankAdress, fishID);
+                    InetSocketAddress tankAddress = ((NameResolutionResponse) msg.getPayload()).getTankAdress();
+                    tankModel.sendFishUpdate(tankAddress, fishID);
                 }
 
             }

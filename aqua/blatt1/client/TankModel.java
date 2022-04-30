@@ -26,12 +26,26 @@ public class TankModel extends Observable implements Iterable<FishModel> {
     protected ArrayList<Serializable> localState;
     protected RecordingState recState = RecordingState.IDLE;
 
+    // Map that keeps track of every fish that has been in this tank with his state
     protected Map<String, FishState> fishTraces = new HashMap<>();
+    // Map that keeps every fish that belongs to this tank and his current address
     protected Map<String, InetSocketAddress> homeAgent = new HashMap<>();
 
     // true = forwardingRefrende, false=Heimatgestuetzter Ansatz
     protected boolean useForwardingRefrence = false;
 
+
+
+    public TankModel(ClientCommunicator.ClientForwarder forwarder) {
+        this.fishies = Collections.newSetFromMap(new ConcurrentHashMap<FishModel, Boolean>());
+        this.forwarder = forwarder;
+    }
+
+    /**
+     * updates the location of the fish
+     * @param fishID the ID of the fish
+     * @param location the new address of the fish
+     */
     public void updateFishLocation(String fishID, InetSocketAddress location) {
         homeAgent.put(fishID, location);
     }
@@ -40,6 +54,13 @@ public class TankModel extends Observable implements Iterable<FishModel> {
         HERE,
         LEFT,
         RIGHT
+    }
+
+    protected enum RecordingState {
+        IDLE,
+        LEFT,
+        RIGHT,
+        BOTH
     }
 
     /**
@@ -84,23 +105,11 @@ public class TankModel extends Observable implements Iterable<FishModel> {
         return false;
     }
 
-    protected enum RecordingState {
-        IDLE,
-        LEFT,
-        RIGHT,
-        BOTH
-    }
-
     protected SnapshotCollector snapshotCollector = null;
     protected int globalState = -1;
 
     private boolean doIhaveIt = false;
     private Timer timer = new Timer();
-
-    public TankModel(ClientCommunicator.ClientForwarder forwarder) {
-        this.fishies = Collections.newSetFromMap(new ConcurrentHashMap<FishModel, Boolean>());
-        this.forwarder = forwarder;
-    }
 
     synchronized void initiateSnapshot(RecordingState channels) {
         System.out.println("Initiating Snapshot!");
@@ -140,6 +149,11 @@ public class TankModel extends Observable implements Iterable<FishModel> {
         newFish(WIDTH - FishModel.getXSize(), rand.nextInt(HEIGHT - FishModel.getYSize()));
     }
 
+    /**
+     * sends an update that the fish is now in this tank
+     * @param homeTank the tank where the fish is from
+     * @param fishID the ID of the fish
+     */
     public synchronized void sendFishUpdate(InetSocketAddress homeTank, String fishID) {
         forwarder.sendLocationUpdate(homeTank, fishID);
     }
@@ -153,22 +167,25 @@ public class TankModel extends Observable implements Iterable<FishModel> {
                     rand.nextBoolean() ? Direction.LEFT : Direction.RIGHT);
 
             fishies.add(fish);
+
+            // add the fish to the tracking lists
             fishTraces.put(fish.getId(), FishState.HERE);
             homeAgent.put(fish.getId(), null);
         }
     }
 
     synchronized void receiveFish(FishModel fish) {
-
-        // add Trace
-        fishTraces.put(fish.getId(), FishState.HERE);
-
-        // update homeAgent
-        // fish is from this tank
-        if (fish.getTankId().equals(id)) {
-            homeAgent.put(fish.getId(), null);
+        if (useForwardingRefrence) {
+            // add/update Trace
+            fishTraces.put(fish.getId(), FishState.HERE);
         } else {
-            forwarder.sendNameResolveRequest(fish.getTankId(), fish.getId());
+            // update homeAgent
+            // fish is from this tank
+            if (fish.getTankId().equals(id)) {
+                homeAgent.put(fish.getId(), null);
+            } else {
+                forwarder.sendNameResolveRequest(fish.getTankId(), fish.getId());
+            }
         }
 
         // Record Channel if recState says so
@@ -208,9 +225,11 @@ public class TankModel extends Observable implements Iterable<FishModel> {
                 } else {
                     forwarder.handOff(fish, this);
 
-                    // update Trace
-                    FishState state = fish.getDirection() == Direction.LEFT ? FishState.LEFT : FishState.RIGHT;
-                    fishTraces.put(fish.getId(), state);
+                    if (useForwardingRefrence) {
+                        // update Trace with the direction the fish went
+                        FishState state = fish.getDirection() == Direction.LEFT ? FishState.LEFT : FishState.RIGHT;
+                        fishTraces.put(fish.getId(), state);
+                    }
                 }
 
             if (fish.disappears())

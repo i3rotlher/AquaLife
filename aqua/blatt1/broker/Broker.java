@@ -113,11 +113,15 @@ public class Broker {
         ep.send(next, new HandoffRequest(req.getFish()));
     }
 
+    /**
+     * sends the address of a given tankID
+     * @param m the massage containing the tankID and the RequestID
+     */
     public void resolveName(Message m) {
         InetSocketAddress sender = m.getSender();
         NameResolutionRequest req = (NameResolutionRequest) m.getPayload();
-        InetSocketAddress tankAdress = clientList.getClient(clientList.indexOf(req.getTankID()));
-        ep.send(sender, new NameResolutionResponse(req.getRequestID(), tankAdress));
+        InetSocketAddress tankAddress = clientList.getClient(clientList.indexOf(req.getTankID()));
+        ep.send(sender, new NameResolutionResponse(req.getRequestID(), tankAddress));
     }
 
     /*
