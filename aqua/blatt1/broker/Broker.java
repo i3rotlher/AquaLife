@@ -120,6 +120,12 @@ public class Broker {
     public void resolveName(Message m) {
         InetSocketAddress sender = m.getSender();
         NameResolutionRequest req = (NameResolutionRequest) m.getPayload();
+
+        //check if client does exist
+        if (clientList.indexOf(req.getTankID())==-1) {
+            System.out.println("Client " + req.getTankID() + " already closed!");
+        }
+
         InetSocketAddress tankAddress = clientList.getClient(clientList.indexOf(req.getTankID()));
         ep.send(sender, new NameResolutionResponse(req.getRequestID(), tankAddress));
     }
