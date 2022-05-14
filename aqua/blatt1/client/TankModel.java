@@ -108,7 +108,7 @@ public class TankModel extends Observable implements Iterable<FishModel> {
     protected SnapshotCollector snapshotCollector = null;
     protected int globalState = -1;
 
-    private boolean doIhaveIt = false;
+    private boolean doIhaveIt = true;//false;
     private Timer timer = new Timer();
 
     synchronized void initiateSnapshot(RecordingState channels) {
@@ -152,7 +152,7 @@ public class TankModel extends Observable implements Iterable<FishModel> {
             public void run() {
                 forwarder.register();
             }
-        }, 0, leaseDuration/2);
+        }, leaseDuration/2, leaseDuration/2);
         newFish(WIDTH - FishModel.getXSize(), rand.nextInt(HEIGHT - FishModel.getYSize()));
     }
 

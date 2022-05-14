@@ -29,6 +29,9 @@ public class AquaGui extends JFrame implements Runnable, Observer {
 
 		pack();
 
+		// Set's the window to be "always on top"
+		setAlwaysOnTop( true );
+
 		setLocationRelativeTo(null);
 		setResizable(false);
 		setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);

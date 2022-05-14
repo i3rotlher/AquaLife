@@ -32,6 +32,11 @@ public class ClientCollection<T> {
 		return this;
 	}
 
+	public String getClientID (T client) {
+		int index = indexOf(client);
+		return clients.get(index).id;
+	}
+
 	public ClientCollection<T> remove(int index) {
 		clients.remove(index);
 		return this;

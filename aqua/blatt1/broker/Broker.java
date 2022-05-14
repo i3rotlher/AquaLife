@@ -1,6 +1,8 @@
 package aqua.blatt1.broker;
 import java.io.Serializable;
 import java.net.InetSocketAddress;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.List;
 import java.util.Timer;
 import java.util.TimerTask;
@@ -31,7 +33,8 @@ public class Broker {
     // schreibender Zugriff sofort in allen Threads sichtbar wird
     private static volatile boolean stopRequest = false;
 
-    private final int leaseDuration = 3000;
+    private final int leaseDuration = 5000;
+    SimpleDateFormat sdf = new SimpleDateFormat("HH:mm:ss");
 
     public void broker() {
         // Stopping Thread for setting the stopRequest
@@ -60,9 +63,11 @@ public class Broker {
     }
  
     private void checkExpiredClients() {
+        String now = sdf.format(new Date(System.currentTimeMillis()));
         List<String> expiredIds = clientList.getExpiredClientsIDs(leaseDuration);
         for (String id : expiredIds) {
-            System.out.printf("Found expired Lease: Client [%s], last Update: %s", id,clientList.getTimestamp(id) );
+            System.out.printf("Found expired Lease %s: Client [%s], last Update: %s, leasing duration: %d.\n",now, id, sdf.format(new Date(clientList.getTimestamp(id))), leaseDuration);
+            System.out.printf("Deregistering Client %s now!\n", id);
             deregister(new Message(new DeregisterRequest(id), clientList.getClient(clientList.indexOf(id))));
         }
     }
@@ -70,42 +75,46 @@ public class Broker {
     private int lastId = 0;
 
     public void register(Message m) {
-        lock.writeLock().lock();
-        String id = "tank " + lastId;
+        System.out.println("recieved register from " + m.getSender());
         InetSocketAddress sender = m.getSender();
-        lastId++;
         long now = System.currentTimeMillis();
-        if (clientList.indexOf(sender) < 0) {
-            System.out.printf("Client %s has registered for the first time at %d\n", id, now);
-            clientList.add(id, sender, now);
-        } else {
+        Date date = new Date(now);
+
+        if (clientList.indexOf(sender) >= 0) {
+            System.out.printf("Client %s has send register update at %s\n", clientList.getClientID(sender), sdf.format(date));
             clientList.updateTimestamp(clientList.indexOf(sender), now);
-            System.out.printf("Client %s has send a register update at %d.\n", id, now);
+        } else {
+            lock.writeLock().lock();
+            String id = "tank " + lastId;
+            lastId++;
+            System.out.printf("Client %s has registered for the first time at %s\n", id, sdf.format(date));
+            clientList.add(id, sender, now);
+
+            int index = clientList.indexOf(id);
+
+            // Get the left and right neighbor
+            InetSocketAddress left = clientList.getLeftNeighorOf(index);
+            InetSocketAddress right = clientList.getRightNeighorOf(index);
+
+            lock.writeLock().unlock();
+
+            // Hand out the Token to the first client
+            //if (lastId == 1) {System.out.println("Sending Token ...");ep.send(sender, new Token());};
+
+            // Tell new client his new neighbors
+            ep.send(sender, new NeighborUpdate(left, Direction.LEFT));
+            ep.send(sender, new NeighborUpdate(right, Direction.RIGHT));
+
+            ep.send(m.getSender(), new RegisterResponse(id, leaseDuration));
+
+            // Tell neighbors that they have a new left or right neighbor
+            ep.send(left, new NeighborUpdate(sender, Direction.RIGHT));
+            ep.send(right, new NeighborUpdate(sender, Direction.LEFT));
         }
-
-        int index = clientList.indexOf(id);
-
-        // Get the left and right neighbor
-        InetSocketAddress left = clientList.getLeftNeighorOf(index);
-        InetSocketAddress right = clientList.getRightNeighorOf(index);
-
-        lock.writeLock().unlock();
-
-        ep.send(m.getSender(), new RegisterResponse(id, leaseDuration));
-
-        // Hand out the Token to the first client
-        if (lastId == 1) {System.out.println("Sending Token ...");ep.send(sender, new Token());};
-
-        // Tell new client his new neighbors
-        ep.send(sender, new NeighborUpdate(left, Direction.LEFT));
-        ep.send(sender, new NeighborUpdate(right, Direction.RIGHT));
-
-        // Tell neighbors that they have a new left or right neighbor
-        ep.send(left, new NeighborUpdate(sender, Direction.RIGHT));
-        ep.send(right, new NeighborUpdate(sender, Direction.LEFT));
     }
 
     public void deregister (Message m) {
+        System.out.printf("Client %s has been deregistered.", clientList.getClientID(m.getSender()));
         String id = ((DeregisterRequest) m.getPayload()).getId();
 
         lock.writeLock().lock();
