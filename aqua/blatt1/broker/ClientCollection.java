@@ -12,10 +12,12 @@ public class ClientCollection<T> {
 	private class Client {
 		final String id;
 		final T client;
+		private long timestamp;
 
-		Client(String id, T client) {
+		Client(String id, T client, long timestamp) {
 			this.id = id;
 			this.client = client;
+			this.timestamp = timestamp;
 		}
 	}
 
@@ -25,8 +27,8 @@ public class ClientCollection<T> {
 		clients = new ArrayList<Client>();
 	}
 
-	public ClientCollection<T> add(String id, T client) {
-		clients.add(new Client(id, client));
+	public ClientCollection<T> add(String id, T client, long timestamp) {
+		clients.add(new Client(id, client, timestamp));
 		return this;
 	}
 
@@ -63,6 +65,27 @@ public class ClientCollection<T> {
 
 	public T getRightNeighorOf(int index) {
 		return index < clients.size() - 1 ? clients.get(index + 1).client : clients.get(0).client;
+	}
+
+	public void updateTimestamp(int index, long timestamp) {
+		clients.get(index).timestamp = timestamp;
+	}
+
+	public long getTimestamp(String id) {
+		return clients.get(indexOf(id)).timestamp;
+	}
+
+	public List<String> getExpiredClientsIDs(int leaseDuration) {
+		long now = System.currentTimeMillis();
+		List<String> expiredClients = new ArrayList<>();
+
+		for (Client c : clients) {
+			if (now - c.timestamp > leaseDuration) {
+				expiredClients.add(c.id);
+			}
+		}
+
+		return expiredClients;
 	}
 
 }

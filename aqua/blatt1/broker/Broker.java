@@ -1,16 +1,19 @@
 package aqua.blatt1.broker;
 import java.io.Serializable;
 import java.net.InetSocketAddress;
+import java.util.List;
+import java.util.Timer;
+import java.util.TimerTask;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import javax.swing.*;
 import aqua.blatt1.common.Direction;
 import aqua.blatt1.common.Properties;
 import aqua.blatt1.common.msgtypes.*;
 import aqua.blatt2.broker.PoisonPill;
 import messaging.*;
-import javax.swing.*;
 
 
 public class Broker {
@@ -28,9 +31,19 @@ public class Broker {
     // schreibender Zugriff sofort in allen Threads sichtbar wird
     private static volatile boolean stopRequest = false;
 
+    private final int leaseDuration = 3000;
+
     public void broker() {
         // Stopping Thread for setting the stopRequest
         es.execute(new stopRequest());
+        // TimerTask to check expired leases
+        new Timer().schedule(new TimerTask() {
+            @Override
+            public void run() {
+                checkExpiredClients();
+            }
+        }, 0, leaseDuration/2);
+
 
         while (!stopRequest) {
             Message m = ep.blockingReceive();
@@ -45,6 +58,14 @@ public class Broker {
         es.shutdownNow();
         System.out.println("I'm done!");
     }
+ 
+    private void checkExpiredClients() {
+        List<String> expiredIds = clientList.getExpiredClientsIDs(leaseDuration);
+        for (String id : expiredIds) {
+            System.out.printf("Found expired Lease: Client [%s], last Update: %s", id,clientList.getTimestamp(id) );
+            deregister(new Message(new DeregisterRequest(id), clientList.getClient(clientList.indexOf(id))));
+        }
+    }
 
     private int lastId = 0;
 
@@ -53,7 +74,14 @@ public class Broker {
         String id = "tank " + lastId;
         InetSocketAddress sender = m.getSender();
         lastId++;
-        clientList.add(id, sender);
+        long now = System.currentTimeMillis();
+        if (clientList.indexOf(sender) < 0) {
+            System.out.printf("Client %s has registered for the first time at %d\n", id, now);
+            clientList.add(id, sender, now);
+        } else {
+            clientList.updateTimestamp(clientList.indexOf(sender), now);
+            System.out.printf("Client %s has send a register update at %d.\n", id, now);
+        }
 
         int index = clientList.indexOf(id);
 
@@ -63,7 +91,7 @@ public class Broker {
 
         lock.writeLock().unlock();
 
-        ep.send(m.getSender(), new RegisterResponse(id));
+        ep.send(m.getSender(), new RegisterResponse(id, leaseDuration));
 
         // Hand out the Token to the first client
         if (lastId == 1) {System.out.println("Sending Token ...");ep.send(sender, new Token());};
