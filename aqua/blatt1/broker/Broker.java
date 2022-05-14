@@ -124,6 +124,7 @@ public class Broker {
         //check if client does exist
         if (clientList.indexOf(req.getTankID())==-1) {
             System.out.println("Client " + req.getTankID() + " already closed!");
+            return;
         }
 
         InetSocketAddress tankAddress = clientList.getClient(clientList.indexOf(req.getTankID()));
