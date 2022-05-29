@@ -14,12 +14,13 @@ import javax.swing.*;
 import aqua.blatt1.common.Direction;
 import aqua.blatt1.common.Properties;
 import aqua.blatt1.common.msgtypes.*;
+import aqua.blatt1.security.SecureEndpoint;
 import aqua.blatt2.broker.PoisonPill;
 import messaging.*;
 
 
 public class Broker {
-    private Endpoint ep = new Endpoint(Properties.PORT);
+    private Endpoint ep = new SecureEndpoint(Properties.PORT);
 
     private ClientCollection<InetSocketAddress> clientList = new ClientCollection<>();
 

@@ -4,6 +4,7 @@ import java.net.InetSocketAddress;
 
 import aqua.blatt1.common.Direction;
 import aqua.blatt1.common.msgtypes.*;
+import aqua.blatt1.security.SecureEndpoint;
 import messaging.Endpoint;
 import messaging.Message;
 import aqua.blatt1.common.FishModel;
@@ -13,7 +14,7 @@ public class ClientCommunicator {
     private final Endpoint endpoint;
 
     public ClientCommunicator() {
-        endpoint = new Endpoint();
+        endpoint = new SecureEndpoint();
     }
 
     public class ClientForwarder {
